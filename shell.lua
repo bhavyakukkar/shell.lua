@@ -1,3 +1,5 @@
+#!/usr/bin/env lua -i
+
 Cmd = {
   meta = {
     -- Chain this command with another argument
@@ -87,3 +89,9 @@ Prompt = {
 }
 
 setmetatable(Prompt, Prompt.meta)
+
+local config = loadfile(os.getenv("HOME") .. "/.shell.lua")
+if config then
+  config()
+end
+ 
