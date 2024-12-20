@@ -1,3 +1,4 @@
+#!/usr/bin/env lua -i
 
 Cmd = {
   meta = {
@@ -10,74 +11,87 @@ Cmd = {
     -- Invoke this command
     -- (automatically called by repl)
     __tostring = function(self)
-      local output = ''
-      if self.before then
-        output = output .. Cmd.exec(self.before)
-        return output .. Cmd.exec(self)
-      elseif self.pipe then
-        output = output .. Cmd.exec(self, Cmd.exec(self.pipe))
-        return output
-      else
-        return output .. Cmd.exec(self)
-      end
+      Cmd.execute(self)
+      return ''
     end,
 
-    -- Comment-out this command
-    -- (user can prefix with #)
+    -- Execute this command and get it's output
     __len = function(self)
-      return ''
+      return Cmd.execute(self, true)
     end,
 
     -- Pipe this command into that command
     __bor = function(self, other)
-      other.pipe = self
-      return other
-    end,
-
-    __unm = function(self)
+      if getmetatable(other) == Cmd.meta then
+        self.exec = self.exec .. ' | ' .. other.exec
+      else
+        self.exec = self.exec .. ' | ' .. other
+      end
       return self
     end,
 
+    -- -flags
     __sub = function(self, flag)
-      return Cmd.append(self, '-' .. flag.exe)
+      if getmetatable(flag) == Cmd.meta then
+        return Cmd.append(self, '-' .. flag.exec)
+      else
+        return Cmd.append(self, '-' .. flag)
+      end
     end,
   },
 
-  display = function(self)
-    local cmdstr = self.exe
-    for _, arg in ipairs(self.args) do
-      cmdstr = cmdstr .. ' ' .. arg
-    end
-    return cmdstr
-  end,
-
-  exec = function(self, stdin)
-    -- TODO here
-    if stdin then end
-    local handle = io.popen(Cmd.display(self))
-    local out = handle:read('*a')
-    handle:close()
-    return out
+  new = function(exe)
+    local self = { exec = exe }
+    setmetatable(self, Cmd.meta)
+    return self
   end,
 
   append = function(self, arg)
-    table.insert(self.args, arg)
+    if getmetatable(arg) == Cmd.meta then
+      self.exec = self.exec .. ' ' .. arg.cmd
+    else
+      self.exec = self.exec .. ' ' .. arg
+    end
     return self
   end,
 
-  new = function(exe)
-    local self = { exe = exe, args = {}, before = nil }
-    setmetatable(self, Cmd.meta)
-    return self
+  execute = function(self, capture)
+    local handle = io.popen(self.exec, capture and 'r' or 'w')
+    local output
+    if handle and capture then
+      output = capture and handle:read('*a') or ''
+    end
+    local _, _exit_kind, exit_code = io.close(handle)
+    if capture then
+      return output, exit_code
+    else
+      return exit_code
+    end
   end,
 }
 
 protected = { _PROMPT = true, _PROMPT2 = true, }
 setmetatable( _G, {
-  __index = function(_, exe)
-    if not protected[exe] then
-      local cmd = Cmd.new(exe)
+  __index = function(_, ident)
+    if not protected[ident] then
+      local cmd = Cmd.new(ident)
       return cmd
     end
   end
 })
+
+Prompt = {
+  meta = {
+    __tostring = function(self)
+      return self:prompt()
+    end,
+  },
+}
+
+setmetatable(Prompt, Prompt.meta)
+
+local config = loadfile(os.getenv("HOME") .. "/.shell.lua")
+if config then
+  config()
+end
+ 
